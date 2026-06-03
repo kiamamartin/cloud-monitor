@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor-api
+  labels:
+    app: cloud-monitor
+    component: api
+spec:
+  replicas: 2  # Run 2 instances of our API for High Availability
+  selector:
+    matchLabels:
+      app: cloud-monitor
+      component: api
+  template:
+    metadata:
+      labels:
+        app: cloud-monitor
+        component: api
+    spec:
+      containers:
+      - name: api
+        image: your-dockerhub-username/cloud-monitor:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: monitor-secrets
+        command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monitor-worker
+  labels:
+    app: cloud-monitor
+    component: worker
+spec:
+  replicas: 1  # 1 worker is usually enough, could scale up for thousands of monitors
+  selector:
+    matchLabels:
+      app: cloud-monitor
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: cloud-monitor
+        component: worker
+    spec:
+      containers:
+      - name: worker
+        image: your-dockerhub-username/cloud-monitor:latest
+        imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: monitor-secrets
+        command: ["python", "-m", "app.workers.monitor_worker"]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitor-api-service
+spec:
+  type: ClusterIP
+  selector:
+    app: cloud-monitor
+    component: api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
